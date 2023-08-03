@@ -525,6 +525,25 @@ def mixerblock_bwd_hook(model: Module, n: int = 0) -> Hook:
                 i += 1
 
 
+def fwd_hook_vit(model: Module, Block_Module, n: int = 0) -> Hook:
+    i = 0
+    for id, layer in list(model.named_modules()):
+        if isinstance(layer, Block_Module):
+            if i == n:
+                return Hook(layer, backward=False)
+            else:
+                i += 1
+
+
+def bwd_hook_vit(model: Module, Block_Module, n: int = 0) -> Hook:
+    i = 0
+    for id, layer in list(model.named_modules()):
+        if isinstance(layer, Block_Module):
+            if i == n:
+                return Hook(layer, backward=True)
+            else:
+                i += 1
+
 ######################################################################
 #####Partial Jacobian#####
 ######################################################################
