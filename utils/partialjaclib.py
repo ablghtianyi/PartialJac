@@ -204,7 +204,6 @@ class MlpMixer(nn.Module):
                 init.normal_(m.weight, 0.0, self.sigma_w / math.sqrt(float(fan_in)))
                 init.normal_(m.bias, 0.0, self.sigma_b)
 
-
     def forward(self, x):
         x = self.stem(x)
         x = x.flatten(2)
@@ -216,7 +215,7 @@ class MlpMixer(nn.Module):
         x = torch.mean(x, 1)
         x = self.head(x)
         return x
-
+    
 
 ######################################################################
 #####Layers#####
@@ -441,6 +440,29 @@ class Hook:
         self.hook.remove()
 
 
+class GradHook:
+    def __init__(self, module: Module, bs: int, n_proj: int, device):
+        self.hook = module.register_forward_hook(self.grad_fn)
+        self.n_proj = n_proj
+        self.bs = bs
+        self.device = device
+        
+    def grad_fn(self, module: Module, input: Tensor, output: Tensor):
+        Js = 0.0
+        for _ in range(self.n_proj):
+            inter = output.reshape(self.bs, -1)
+            vs = generate_unit_vectors(inter.shape[0], inter.shape[1]).reshape(-1).to(device=self.device)
+            temp = torch.autograd.grad(inter.reshape(-1), input, vs, retain_graph=True, create_graph=False, allow_unused=False)[0]
+            Js += torch.sum(temp**2)
+
+        self.pgrad = temp.detach()
+        self.pj = Js / self.bs / self.n_proj
+        self.nngp = torch.mean(inter**2)
+
+    def close(self):
+        self.hook.remove()
+        
+
 ######################################################################
 #####Functions#####
 ######################################################################
@@ -630,32 +652,37 @@ def range_fn(min_lr: float = 1e-4, max_lr: float = 10, nums: int = 50) -> np.arr
 
 def lrs_grid(wvars: np.array, bvars: np.array, nums: int = 50) -> np.array:
     lrs = np.ones((wvars.shape[-1], bvars.shape[-1], nums))
-    # for i in range(wvars.shape[-1]):
-    #     for j in range(bvars,shape[-1]):
-    #         lrs[i, j, :] = range_fn(nums=nums)
     return lrs * range_fn(nums=nums)
 
 
-def check_accuracy(loader: DataLoader, model: Module, dtype, device: str) -> tuple:
+@torch.no_grad()
+def check_accuracy(
+    loader: DataLoader, model: nn.Module, dtype, device: str, scaler
+) -> tuple:
+    
     num_correct = 0
     num_samples = 0
     model = model.to(device=device)
     model.eval()  # set model to evaluation mode
     x_wrong = []
-    with torch.no_grad():
-        for x, y in loader:
+    for x, y in loader:
 
-            x = x.to(device=device, dtype=dtype)
-            y = y.to(device=device, dtype=torch.long)
+        x = x.to(device=device, dtype=dtype)
+        y = y.to(device=device, dtype=torch.long)
 
+        if scaler is None:
             scores = model(x)
-            _, preds = scores.max(1)
+        else:
+            with torch.cuda.amp.autocast():
+                scores = model(x)
+                
+        _, preds = scores.max(1)
 
-            num_correct += (preds == y).sum()
-            num_samples += preds.size(0)
-            x_wrong.append(x[y != preds])
+        num_correct += (preds == y).sum()
+        num_samples += preds.size(0)
+        x_wrong.append(x[y != preds])
 
-        acc = float(num_correct) / num_samples
+    acc = float(num_correct) / num_samples
 
     return num_correct, num_samples, acc
 
