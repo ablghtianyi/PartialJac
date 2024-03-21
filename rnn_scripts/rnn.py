@@ -49,13 +49,13 @@ n_channel = 1
 img_size = 28
 
 xr = torch.normal(0, 1.0, (batch_size, n_channel, img_size, img_size)).to(device=device)
-xr /= (xr.pow(2).sum(dim=(-1, -2, -3)) / n_channel / img_size**2)**0.5
+# xr /= (xr.pow(2).sum(dim=(-1, -2, -3)) / n_channel / img_size**2)**0.5
 xr = Variable(xr, requires_grad=True)
 
-# wvars = np.arange(0.01, 4.1, 0.2)
-# mus = np.arange(0.0, 1.1, 0.1)
-wvars = np.array([1.0])
-mus = np.array([1.0])
+wvars = np.arange(0.01, 4.1, 0.2)
+mus = np.arange(0.0, 1.1, 0.1)
+# wvars = np.array([1.0])
+# mus = np.array([1.0])
 n_proj = 5
 width = 500
 out_size = 10
@@ -64,7 +64,7 @@ bias = False
 
 norm_type = 'pre'
 act_name = 'Linear'
-exact = True
+exact = False
 
 ts = np.arange(0, 31, 1)
 J2s = np.zeros((len(ts), n_ave, wvars.shape[0], mus.shape[0]))
@@ -115,6 +115,7 @@ else:
                         model = RNN(n_channel * img_size**2, width, out_size, n_hidden, wvars[i]**0.5, 0.0, act_name=act_name, bias=bias, mu=mus[j], norm_type=norm_type).to(device=device)
                         h1 = model.input(flatten(xr))
                         J2, J4 = jac_fn(model.rnn, h1)
+                        print(J2, J4)
                         h2 = model.rnn(h1)
                         with torch.inference_mode():
                             J2s[k, ave, i, j] += J2
