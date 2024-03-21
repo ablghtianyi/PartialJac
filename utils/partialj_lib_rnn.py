@@ -49,7 +49,7 @@ class GradHook:
         self.pgrad = temp.detach()
         self.pj = Js / self.bs / self.n_proj
         self.nngp = torch.mean(inter**2)
-
+        
     def close(self):
         self.hook.remove()
         
